@@ -101,7 +101,7 @@ services:
   # PostgreSQL + Patroni (nœud 1 - préféré primary)
   # ============================================
   patroni1:
-    image: adakal-patroni:16
+    image: ghcr.io/abocoum/adakal-patroni:1.0.0
     hostname: patroni1
     environment:
       PATRONI_NAME: patroni1
@@ -132,7 +132,7 @@ services:
         delay: 10s
 
   patroni2:
-    image: adakal-patroni:16
+    image: ghcr.io/abocoum/adakal-patroni:1.0.0
     hostname: patroni2
     environment:
       PATRONI_NAME: patroni2
@@ -163,7 +163,7 @@ services:
         delay: 10s
 
   patroni3:
-    image: adakal-patroni:16
+    image: ghcr.io/abocoum/adakal-patroni:1.0.0
     hostname: patroni3
     environment:
       PATRONI_NAME: patroni3
@@ -222,7 +222,7 @@ services:
   # Odoo 18 Community - Failover
   # ============================================
   odoo:
-    image: adakal-odoo:18.0
+    image: ghcr.io/abocoum/adakal-odoo:1.0.0
     environment:
       # Odoo se connecte à HAProxy qui route vers le primary PG
       HOST: haproxy
