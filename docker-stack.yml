@@ -305,4 +305,5 @@ networks:
   odoo-internal:
     driver: overlay
     attachable: true
-    encrypted: true
+    driver_opts:
+      encrypted: "true"
