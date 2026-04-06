@@ -5,7 +5,7 @@ set -e
 for secret_file in /run/secrets/*; do
     if [ -f "$secret_file" ]; then
         var_name=$(basename "$secret_file" | tr '[:lower:]' '[:upper:]')
-        export "$var_name"="$(cat "$secret_file")"
+        export "$var_name"="$(tr -d '\n\r' < "$secret_file")"
     fi
 done
 
