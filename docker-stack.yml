@@ -107,12 +107,14 @@ services:
   # PostgreSQL + Patroni (nœud 1 - préféré primary)
   # ============================================
   patroni1:
-    image: ghcr.io/abocoum/adakal-patroni:1.0.1
+    image: ghcr.io/abocoum/adakal-patroni:1.0.2
     hostname: patroni1
     environment:
       PATRONI_NAME: patroni1
       PATRONI_SCOPE: adakal-pg
-      PATRONI_ETCD3_HOSTS: "'etcd1:2379','etcd2:2379','etcd3:2379'"
+      PATRONI_ETCD3_HOST1: etcd1:2379
+      PATRONI_ETCD3_HOST2: etcd2:2379
+      PATRONI_ETCD3_HOST3: etcd3:2379
       PATRONI_RESTAPI_LISTEN: 0.0.0.0:8008
       PATRONI_RESTAPI_CONNECT_ADDRESS: patroni1:8008
       PATRONI_POSTGRESQL_LISTEN: 0.0.0.0:5432
@@ -139,12 +141,14 @@ services:
         delay: 10s
 
   patroni2:
-    image: ghcr.io/abocoum/adakal-patroni:1.0.1
+    image: ghcr.io/abocoum/adakal-patroni:1.0.2
     hostname: patroni2
     environment:
       PATRONI_NAME: patroni2
       PATRONI_SCOPE: adakal-pg
-      PATRONI_ETCD3_HOSTS: "'etcd1:2379','etcd2:2379','etcd3:2379'"
+      PATRONI_ETCD3_HOST1: etcd1:2379
+      PATRONI_ETCD3_HOST2: etcd2:2379
+      PATRONI_ETCD3_HOST3: etcd3:2379
       PATRONI_RESTAPI_LISTEN: 0.0.0.0:8008
       PATRONI_RESTAPI_CONNECT_ADDRESS: patroni2:8008
       PATRONI_POSTGRESQL_LISTEN: 0.0.0.0:5432
@@ -171,12 +175,14 @@ services:
         delay: 10s
 
   patroni3:
-    image: ghcr.io/abocoum/adakal-patroni:1.0.1
+    image: ghcr.io/abocoum/adakal-patroni:1.0.2
     hostname: patroni3
     environment:
       PATRONI_NAME: patroni3
       PATRONI_SCOPE: adakal-pg
-      PATRONI_ETCD3_HOSTS: "'etcd1:2379','etcd2:2379','etcd3:2379'"
+      PATRONI_ETCD3_HOST1: etcd1:2379
+      PATRONI_ETCD3_HOST2: etcd2:2379
+      PATRONI_ETCD3_HOST3: etcd3:2379
       PATRONI_RESTAPI_LISTEN: 0.0.0.0:8008
       PATRONI_RESTAPI_CONNECT_ADDRESS: patroni3:8008
       PATRONI_POSTGRESQL_LISTEN: 0.0.0.0:5432
@@ -231,7 +237,7 @@ services:
   # Odoo 18 Community - Failover
   # ============================================
   odoo:
-    image: ghcr.io/abocoum/adakal-odoo:1.0.1
+    image: ghcr.io/abocoum/adakal-odoo:1.0.2
     environment:
       # Connexion via HAProxy (non-secret)
       HOST: haproxy

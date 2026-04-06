@@ -6,7 +6,10 @@ restapi:
   connect_address: ${PATRONI_RESTAPI_CONNECT_ADDRESS}
 
 etcd3:
-  hosts: ${PATRONI_ETCD3_HOSTS}
+  hosts:
+    - ${PATRONI_ETCD3_HOST1}
+    - ${PATRONI_ETCD3_HOST2}
+    - ${PATRONI_ETCD3_HOST3}
 
 bootstrap:
   dcs:
