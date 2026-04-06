@@ -60,15 +60,7 @@ bootstrap:
     - host replication replicator 0.0.0.0/0 md5
     - host all all 0.0.0.0/0 md5
 
-  users:
-    odoo:
-      password: ${POSTGRES_PASSWORD}
-      options:
-        - createdb
-    replicator:
-      password: ${PATRONI_REPLICATION_PASSWORD}
-      options:
-        - replication
+  post_init: /etc/patroni/post_init.sh
 
 postgresql:
   listen: 0.0.0.0:5432

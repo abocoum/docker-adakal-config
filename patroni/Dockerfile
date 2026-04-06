@@ -19,8 +19,9 @@ RUN apt-get update && apt-get install -y \
 
 # Script d'entrée Patroni
 COPY patroni.yml /etc/patroni/patroni.yml
+COPY post_init.sh /etc/patroni/post_init.sh
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN chmod +x /entrypoint.sh /etc/patroni/post_init.sh
 
 EXPOSE 5432 8008
 
