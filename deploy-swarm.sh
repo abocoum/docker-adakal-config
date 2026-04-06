@@ -45,10 +45,15 @@ echo -e "  Nodes in cluster: ${BLUE}${NODE_COUNT}${NC}"
 
 # Node labels
 for i in 1 2 3; do
-    FOUND=$(docker node ls -q | while read -r nid; do
-        docker node inspect "$nid" --format '{{index .Spec.Labels "node"}}' 2>/dev/null | grep -qx "$i" && echo "yes"
-    done | head -1)
-    [ "$FOUND" = "yes" ] || die "Missing label node=$i. Assign with: docker node update --label-add node=<N> <HOSTNAME>"
+    FOUND="no"
+    for nid in $(docker node ls -q); do
+        LABEL=$(docker node inspect "$nid" --format '{{index .Spec.Labels "node"}}' 2>/dev/null || true)
+        if [ "$LABEL" = "$i" ]; then
+            FOUND="yes"
+            break
+        fi
+    done
+    [ "$FOUND" = "yes" ] || die "Missing label node=$i. Assign with: docker node update --label-add node=$i <HOSTNAME>"
 done
 log_ok "Node labels node=1,2,3 present"
 
