@@ -10,6 +10,9 @@ RUN apt-get update && apt-get install -y \
     python3-requests \
     gettext-base \
     curl \
+    locales \
+    && sed -i '/fr_FR.UTF-8/s/^# //' /etc/locale.gen \
+    && locale-gen \
     && pip3 install --break-system-packages patroni[etcd3] \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
