@@ -1,0 +1,288 @@
+version: "3.8"
+
+# ============================================
+# ADAKAL GROUP - Odoo 18 Docker Swarm Stack
+# ============================================
+# Architecture Haute Disponibilité :
+#   - etcd        : 3 instances (DCS pour Patroni)
+#   - PostgreSQL  : 3 instances via Patroni (1 primary + 2 replicas)
+#   - Odoo        : 1 instance failover (n'importe quel nœud)
+#   - Filestore   : S3 compatible (via module OCA)
+# ============================================
+
+services:
+
+  # ============================================
+  # etcd - Distributed Configuration Store
+  # ============================================
+  # etcd est le "cerveau" de Patroni : il gère
+  # l'élection du primary PostgreSQL et le consensus.
+  # Chaque nœud Swarm a une instance etcd.
+  # ============================================
+  etcd1:
+    image: bitnami/etcd:3.5
+    hostname: etcd1
+    environment:
+      ALLOW_NONE_AUTHENTICATION: "yes"
+      ETCD_NAME: etcd1
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: http://etcd1:2380
+      ETCD_LISTEN_PEER_URLS: http://0.0.0.0:2380
+      ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd1:2379
+      ETCD_INITIAL_CLUSTER: etcd1=http://etcd1:2380,etcd2=http://etcd2:2380,etcd3=http://etcd3:2380
+      ETCD_INITIAL_CLUSTER_STATE: new
+      ETCD_INITIAL_CLUSTER_TOKEN: adakal-etcd-cluster
+    volumes:
+      - etcd1-data:/bitnami/etcd
+    networks:
+      - odoo-internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.node == 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+
+  etcd2:
+    image: bitnami/etcd:3.5
+    hostname: etcd2
+    environment:
+      ALLOW_NONE_AUTHENTICATION: "yes"
+      ETCD_NAME: etcd2
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: http://etcd2:2380
+      ETCD_LISTEN_PEER_URLS: http://0.0.0.0:2380
+      ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd2:2379
+      ETCD_INITIAL_CLUSTER: etcd1=http://etcd1:2380,etcd2=http://etcd2:2380,etcd3=http://etcd3:2380
+      ETCD_INITIAL_CLUSTER_STATE: new
+      ETCD_INITIAL_CLUSTER_TOKEN: adakal-etcd-cluster
+    volumes:
+      - etcd2-data:/bitnami/etcd
+    networks:
+      - odoo-internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.node == 2
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+
+  etcd3:
+    image: bitnami/etcd:3.5
+    hostname: etcd3
+    environment:
+      ALLOW_NONE_AUTHENTICATION: "yes"
+      ETCD_NAME: etcd3
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: http://etcd3:2380
+      ETCD_LISTEN_PEER_URLS: http://0.0.0.0:2380
+      ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd3:2379
+      ETCD_INITIAL_CLUSTER: etcd1=http://etcd1:2380,etcd2=http://etcd2:2380,etcd3=http://etcd3:2380
+      ETCD_INITIAL_CLUSTER_STATE: new
+      ETCD_INITIAL_CLUSTER_TOKEN: adakal-etcd-cluster
+    volumes:
+      - etcd3-data:/bitnami/etcd
+    networks:
+      - odoo-internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.node == 3
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+
+  # ============================================
+  # PostgreSQL + Patroni (nœud 1 - préféré primary)
+  # ============================================
+  patroni1:
+    image: adakal-patroni:16
+    hostname: patroni1
+    environment:
+      PATRONI_NAME: patroni1
+      PATRONI_SCOPE: adakal-pg
+      PATRONI_ETCD3_HOSTS: "'etcd1:2379','etcd2:2379','etcd3:2379'"
+      PATRONI_RESTAPI_LISTEN: 0.0.0.0:8008
+      PATRONI_RESTAPI_CONNECT_ADDRESS: patroni1:8008
+      PATRONI_POSTGRESQL_LISTEN: 0.0.0.0:5432
+      PATRONI_POSTGRESQL_CONNECT_ADDRESS: patroni1:5432
+      PATRONI_POSTGRESQL_DATA_DIR: /var/lib/postgresql/data
+      PATRONI_SUPERUSER_USERNAME: postgres
+      PATRONI_SUPERUSER_PASSWORD: ${PATRONI_SUPERUSER_PASSWORD:-postgres_super_2026}
+      PATRONI_REPLICATION_USERNAME: replicator
+      PATRONI_REPLICATION_PASSWORD: ${PATRONI_REPLICATION_PASSWORD:-replicator_2026}
+      POSTGRES_USER: ${POSTGRES_USER:-odoo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-odoo_secure_password_2026}
+    volumes:
+      - patroni1-data:/var/lib/postgresql/data
+    networks:
+      - odoo-internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.node == 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+
+  patroni2:
+    image: adakal-patroni:16
+    hostname: patroni2
+    environment:
+      PATRONI_NAME: patroni2
+      PATRONI_SCOPE: adakal-pg
+      PATRONI_ETCD3_HOSTS: "'etcd1:2379','etcd2:2379','etcd3:2379'"
+      PATRONI_RESTAPI_LISTEN: 0.0.0.0:8008
+      PATRONI_RESTAPI_CONNECT_ADDRESS: patroni2:8008
+      PATRONI_POSTGRESQL_LISTEN: 0.0.0.0:5432
+      PATRONI_POSTGRESQL_CONNECT_ADDRESS: patroni2:5432
+      PATRONI_POSTGRESQL_DATA_DIR: /var/lib/postgresql/data
+      PATRONI_SUPERUSER_USERNAME: postgres
+      PATRONI_SUPERUSER_PASSWORD: ${PATRONI_SUPERUSER_PASSWORD:-postgres_super_2026}
+      PATRONI_REPLICATION_USERNAME: replicator
+      PATRONI_REPLICATION_PASSWORD: ${PATRONI_REPLICATION_PASSWORD:-replicator_2026}
+      POSTGRES_USER: ${POSTGRES_USER:-odoo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-odoo_secure_password_2026}
+    volumes:
+      - patroni2-data:/var/lib/postgresql/data
+    networks:
+      - odoo-internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.node == 2
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+
+  patroni3:
+    image: adakal-patroni:16
+    hostname: patroni3
+    environment:
+      PATRONI_NAME: patroni3
+      PATRONI_SCOPE: adakal-pg
+      PATRONI_ETCD3_HOSTS: "'etcd1:2379','etcd2:2379','etcd3:2379'"
+      PATRONI_RESTAPI_LISTEN: 0.0.0.0:8008
+      PATRONI_RESTAPI_CONNECT_ADDRESS: patroni3:8008
+      PATRONI_POSTGRESQL_LISTEN: 0.0.0.0:5432
+      PATRONI_POSTGRESQL_CONNECT_ADDRESS: patroni3:5432
+      PATRONI_POSTGRESQL_DATA_DIR: /var/lib/postgresql/data
+      PATRONI_SUPERUSER_USERNAME: postgres
+      PATRONI_SUPERUSER_PASSWORD: ${PATRONI_SUPERUSER_PASSWORD:-postgres_super_2026}
+      PATRONI_REPLICATION_USERNAME: replicator
+      PATRONI_REPLICATION_PASSWORD: ${PATRONI_REPLICATION_PASSWORD:-replicator_2026}
+      POSTGRES_USER: ${POSTGRES_USER:-odoo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-odoo_secure_password_2026}
+    volumes:
+      - patroni3-data:/var/lib/postgresql/data
+    networks:
+      - odoo-internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.node == 3
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+
+  # ============================================
+  # HAProxy - Routage automatique vers le primary PG
+  # ============================================
+  # HAProxy interroge l'API Patroni pour trouver
+  # le primary et route Odoo vers celui-ci.
+  # ============================================
+  haproxy:
+    image: haproxy:2.9-alpine
+    hostname: haproxy
+    volumes:
+      - haproxy-config:/usr/local/etc/haproxy:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:7000:7000"
+    networks:
+      - odoo-internal
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+
+  # ============================================
+  # Odoo 18 Community - Failover
+  # ============================================
+  odoo:
+    image: adakal-odoo:18.0
+    environment:
+      # Odoo se connecte à HAProxy qui route vers le primary PG
+      HOST: haproxy
+      PORT: 5432
+      USER: ${POSTGRES_USER:-odoo}
+      PASSWORD: ${POSTGRES_PASSWORD:-odoo_secure_password_2026}
+      # --- S3 Storage ---
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:-}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:-}
+      AWS_HOST: ${S3_ENDPOINT:-}
+    volumes:
+      - odoo-web-data:/var/lib/odoo
+      - odoo-config:/etc/odoo:ro
+      - odoo-extra-addons:/mnt/extra-addons
+      - odoo-oca-addons:/mnt/oca-addons:ro
+    ports:
+      - target: 8069
+        published: 8069
+        protocol: tcp
+        mode: ingress
+      - target: 8072
+        published: 8072
+        protocol: tcp
+        mode: ingress
+    networks:
+      - odoo-internal
+    command: >
+      --config=/etc/odoo/odoo.conf
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 5
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 30s
+        order: stop-first
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
+
+volumes:
+  etcd1-data:
+  etcd2-data:
+  etcd3-data:
+  patroni1-data:
+  patroni2-data:
+  patroni3-data:
+  odoo-web-data:
+  odoo-config:
+  odoo-extra-addons:
+  odoo-oca-addons:
+  haproxy-config:
+
+networks:
+  odoo-internal:
+    driver: overlay
+    attachable: true
+    encrypted: true
