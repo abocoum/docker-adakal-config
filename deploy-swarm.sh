@@ -1,9 +1,7 @@
 #!/bin/bash
 # ============================================
-# ADAKAL GROUP - Déploiement Odoo 18 sur Docker Swarm
-# avec Patroni (PostgreSQL HA) + etcd + HAProxy
-# ============================================
-# À exécuter depuis le nœud MANAGER du Swarm
+# ADAKAL GROUP - Deploy Odoo 18 on Docker Swarm
+# Patroni (PostgreSQL HA) + etcd + HAProxy
 # ============================================
 set -euo pipefail
 
@@ -11,189 +9,120 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 STACK_NAME="adakal-odoo"
+REGISTRY="ghcr.io/abocoum"
+VERSION=$(tr -d '[:space:]' < "$SCRIPT_DIR/VERSION")
 
+# --- Colors ---
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-print_step() { echo -e "${GREEN}[✓]${NC} $1"; }
-print_warn() { echo -e "${YELLOW}[!]${NC} $1"; }
-print_error() { echo -e "${RED}[✗]${NC} $1"; }
+log_ok()   { echo -e "${GREEN}[OK]${NC} $1"; }
+log_warn() { echo -e "${YELLOW}[!!]${NC} $1"; }
+log_err()  { echo -e "${RED}[ERR]${NC} $1"; }
+header()   { echo -e "\n${BLUE}=== $1 ===${NC}"; }
 
-echo -e "\n${BLUE}============================================${NC}"
-echo -e "${BLUE}  ADAKAL GROUP - Odoo 18 Swarm + Patroni${NC}"
-echo -e "${BLUE}============================================${NC}"
+die() { log_err "$1"; exit 1; }
 
-# -------------------------------------------
-# 1. Vérifications Swarm
-# -------------------------------------------
-echo -e "\n${BLUE}=== [1/7] Vérification du Swarm ===${NC}"
+# ============================================
+# 1. Preflight checks
+# ============================================
+header "[1/5] Preflight checks"
 
-if ! docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null | grep -q "active"; then
-    print_error "Ce nœud n'est pas dans un Swarm actif."
-    echo "  Initialisez avec : docker swarm init --advertise-addr <IP_MANAGER>"
-    exit 1
-fi
-print_step "Swarm actif"
+# Swarm active & manager role
+docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null | grep -q "active" \
+    || die "This node is not in an active Swarm. Run: docker swarm init --advertise-addr <IP>"
+[ "$(docker info --format '{{.Swarm.ControlAvailable}}' 2>/dev/null)" = "true" ] \
+    || die "This script must run on a MANAGER node."
+log_ok "Swarm manager confirmed"
 
-NODE_ROLE=$(docker info --format '{{.Swarm.ControlAvailable}}' 2>/dev/null)
-if [ "$NODE_ROLE" != "true" ]; then
-    print_error "Ce script doit être exécuté depuis un nœud MANAGER."
-    exit 1
-fi
-print_step "Nœud manager confirmé"
+# Node count
+NODE_COUNT=$(docker node ls -q | wc -l)
+echo -e "  Nodes in cluster: ${BLUE}${NODE_COUNT}${NC}"
+[ "$NODE_COUNT" -lt 3 ] && log_warn "3 nodes recommended for HA (current: $NODE_COUNT)"
 
-NODE_COUNT=$(docker node ls --format '{{.ID}}' | wc -l)
-echo -e "  Nœuds dans le cluster : ${BLUE}${NODE_COUNT}${NC}"
-
-if [ "$NODE_COUNT" -lt 3 ]; then
-    print_warn "3 nœuds recommandés pour Patroni (actuellement: $NODE_COUNT)"
-fi
-
-# -------------------------------------------
-# 2. Labels des nœuds
-# -------------------------------------------
-echo -e "\n${BLUE}=== [2/7] Configuration des labels ===${NC}"
-
-# Vérifier les labels node=1, node=2, node=3
-LABELED_NODES=0
+# Node labels
 for i in 1 2 3; do
-    HAS_LABEL=$(docker node ls --format '{{.ID}}' | while read id; do
-        labels=$(docker node inspect "$id" --format '{{range $k,$v := .Spec.Labels}}{{$k}}={{$v}} {{end}}' 2>/dev/null)
-        if echo "$labels" | grep -q "node=$i"; then echo "yes"; fi
+    FOUND=$(docker node ls -q | while read -r nid; do
+        docker node inspect "$nid" --format '{{index .Spec.Labels "node"}}' 2>/dev/null | grep -qx "$i" && echo "yes"
     done | head -1)
-    if [ "$HAS_LABEL" = "yes" ]; then
-        LABELED_NODES=$((LABELED_NODES + 1))
-    fi
+    [ "$FOUND" = "yes" ] || die "Missing label node=$i. Assign with: docker node update --label-add node=<N> <HOSTNAME>"
+done
+log_ok "Node labels node=1,2,3 present"
+
+# Required files
+for f in docker-stack.yml VERSION config/odoo.conf haproxy/haproxy.cfg; do
+    [ -f "$f" ] || die "Missing file: $f"
+done
+log_ok "Configuration files present"
+
+# Docker secrets
+REQUIRED_SECRETS=(postgres_password patroni_superuser_password patroni_replication_password odoo_admin_passwd s3_access_key s3_secret_key)
+for s in "${REQUIRED_SECRETS[@]}"; do
+    docker secret inspect "$s" > /dev/null 2>&1 || die "Missing secret: $s — Run: bash create-secrets.sh"
+done
+log_ok "Docker secrets present"
+
+# ============================================
+# 2. Pull images from registry
+# ============================================
+header "[2/5] Pull images (v${VERSION})"
+
+IMAGES=(
+    "${REGISTRY}/adakal-odoo:${VERSION}"
+    "${REGISTRY}/adakal-patroni:${VERSION}"
+)
+
+for img in "${IMAGES[@]}"; do
+    docker pull "$img"
+    log_ok "$img"
 done
 
-if [ "$LABELED_NODES" -lt 3 ]; then
-    print_warn "Les nœuds doivent avoir les labels node=1, node=2, node=3"
-    echo ""
-    echo "  Nœuds disponibles :"
-    docker node ls --format "  {{.ID}}  {{.Hostname}}  {{.Status}}  {{.ManagerStatus}}"
-    echo ""
-    echo "  Appliquez les labels manuellement :"
-    echo "    docker node update --label-add node=1 <NODE1_HOSTNAME>"
-    echo "    docker node update --label-add node=2 <NODE2_HOSTNAME>"
-    echo "    docker node update --label-add node=3 <NODE3_HOSTNAME>"
-    echo ""
-    read -p "  Voulez-vous les attribuer automatiquement dans l'ordre affiché ? (o/N) " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Oo]$ ]]; then
-        NODE_NUM=1
-        for id in $(docker node ls --format '{{.ID}}'); do
-            if [ $NODE_NUM -le 3 ]; then
-                HOSTNAME=$(docker node inspect "$id" --format '{{.Description.Hostname}}')
-                docker node update --label-add "node=$NODE_NUM" "$id" > /dev/null
-                print_step "Label node=$NODE_NUM → $HOSTNAME"
-                NODE_NUM=$((NODE_NUM + 1))
-            fi
-        done
+# ============================================
+# 3. Deploy Swarm configs
+# ============================================
+header "[3/5] Deploy Swarm configs"
+
+deploy_config() {
+    local name="$1" file="$2"
+    if docker config inspect "$name" > /dev/null 2>&1; then
+        log_warn "Config $name already exists (skipping). Remove stack first to update."
     else
-        print_error "Appliquez les labels et relancez le script."
-        exit 1
+        docker config create "$name" "$file"
+        log_ok "Config $name created"
     fi
-else
-    print_step "Labels node=1, node=2, node=3 configurés"
-fi
+}
 
-# -------------------------------------------
-# 3. Vérification des fichiers
-# -------------------------------------------
-echo -e "\n${BLUE}=== [3/7] Vérification des fichiers ===${NC}"
+deploy_config "${STACK_NAME}_haproxy-cfg" haproxy/haproxy.cfg
+deploy_config "${STACK_NAME}_odoo-conf"   config/odoo.conf
 
-for f in "config/odoo.conf" "Dockerfile" "patroni/Dockerfile" "patroni/patroni.yml" "patroni/entrypoint.sh" "haproxy/haproxy.cfg" "docker-stack.yml"; do
-    if [ ! -f "$f" ]; then
-        print_error "Fichier manquant : $f"
-        exit 1
-    fi
-done
-print_step "Tous les fichiers de configuration présents"
+# ============================================
+# 4. Deploy stack
+# ============================================
+header "[4/5] Deploy stack"
 
-# Vérifier que les Docker Secrets existent
-echo -e "\n${BLUE}=== [3b/7] Vérification des Docker Secrets ===${NC}"
-MISSING_SECRETS=0
-for secret in postgres_password patroni_superuser_password patroni_replication_password odoo_admin_passwd s3_access_key s3_secret_key; do
-    if ! docker secret inspect "$secret" > /dev/null 2>&1; then
-        print_error "Secret manquant : $secret"
-        MISSING_SECRETS=1
-    fi
-done
-if [ "$MISSING_SECRETS" -eq 1 ]; then
-    print_error "Créez les secrets avec : bash create-secrets.sh"
-    exit 1
-fi
-print_step "Tous les Docker Secrets présents"
-
-if [ ! -d "oca-addons" ] || [ -z "$(ls -A oca-addons 2>/dev/null)" ]; then
-    print_warn "Dossier oca-addons vide. Exécutez ./init-s3-modules.sh d'abord."
-fi
-
-# -------------------------------------------
-# 4. Build des images
-# -------------------------------------------
-echo -e "\n${BLUE}=== [4/7] Construction des images Docker ===${NC}"
-
-echo "  Build de l'image Odoo..."
-docker build -t adakal-odoo:18.0 -f Dockerfile .
-print_step "Image adakal-odoo:18.0 construite"
-
-echo "  Build de l'image Patroni..."
-docker build -t adakal-patroni:16 -f patroni/Dockerfile patroni/
-print_step "Image adakal-patroni:16 construite"
-
-echo ""
-print_warn "Les images doivent être présentes sur CHAQUE nœud."
-echo "  Distribuez avec :"
-echo "    docker save adakal-odoo:18.0 | ssh user@node2 docker load"
-echo "    docker save adakal-patroni:16 | ssh user@node2 docker load"
-echo "  (répétez pour chaque nœud)"
-echo ""
-read -p "  Images distribuées ou prêtes ? (O/n) " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Nn]$ ]]; then
-    echo "Distribuez les images et relancez le script."
-    exit 0
-fi
-
-# -------------------------------------------
-# 5. Déployer les configs dans Swarm
-# -------------------------------------------
-echo -e "\n${BLUE}=== [5/7] Déploiement des configurations ===${NC}"
-
-# HAProxy config
-docker config rm ${STACK_NAME}_haproxy-cfg 2>/dev/null || true
-docker config create ${STACK_NAME}_haproxy-cfg haproxy/haproxy.cfg
-print_step "Config HAProxy déployée"
-
-# Odoo config
-docker config rm ${STACK_NAME}_odoo-conf 2>/dev/null || true
-docker config create ${STACK_NAME}_odoo-conf config/odoo.conf
-print_step "Config Odoo déployée"
-
-# -------------------------------------------
-# 6. Déployer la stack
-# -------------------------------------------
-echo -e "\n${BLUE}=== [6/7] Déploiement de la stack ===${NC}"
-
-# Charger uniquement les variables non-sensibles (ports, S3 endpoint, etc.)
 if [ -f ".env" ]; then
-    export $(grep -v '^#' .env | grep -v '^\s*$' | xargs)
+    set -a
+    source .env
+    set +a
 fi
 
-docker stack deploy -c docker-stack.yml "$STACK_NAME"
-print_step "Stack '$STACK_NAME' déployée"
+docker stack deploy -c docker-stack.yml --with-registry-auth "$STACK_NAME"
+log_ok "Stack '${STACK_NAME}' deployed"
 
-# -------------------------------------------
-# 7. Vérification
-# -------------------------------------------
-echo -e "\n${BLUE}=== [7/7] Vérification du démarrage ===${NC}"
+# ============================================
+# 5. Health check
+# ============================================
+header "[5/5] Health check"
 
-echo -n "Attente des services (peut prendre 1-2 min)"
-for i in $(seq 1 40); do
+TIMEOUT=120
+INTERVAL=5
+ELAPSED=0
+
+echo -n "  Waiting for services"
+while [ "$ELAPSED" -lt "$TIMEOUT" ]; do
     RUNNING=$(docker stack services "$STACK_NAME" --format '{{.Replicas}}' 2>/dev/null | grep -c "1/1" || true)
     TOTAL=$(docker stack services "$STACK_NAME" --format '{{.Replicas}}' 2>/dev/null | wc -l)
     if [ "$RUNNING" -eq "$TOTAL" ] && [ "$TOTAL" -gt 0 ]; then
@@ -201,45 +130,36 @@ for i in $(seq 1 40); do
         break
     fi
     echo -n "."
-    sleep 5
+    sleep "$INTERVAL"
+    ELAPSED=$((ELAPSED + INTERVAL))
 done
+
+if [ "$ELAPSED" -ge "$TIMEOUT" ]; then
+    echo ""
+    log_warn "Timeout after ${TIMEOUT}s — some services may still be starting"
+fi
 
 echo ""
 docker stack services "$STACK_NAME"
 
-# -------------------------------------------
-# Résumé
-# -------------------------------------------
+# ============================================
+# Summary
+# ============================================
 MANAGER_IP=$(docker node inspect self --format '{{.Status.Addr}}' 2>/dev/null || hostname -I | awk '{print $1}')
 
-echo -e "\n${GREEN}============================================${NC}"
-echo -e "${GREEN}  DÉPLOIEMENT SWARM + PATRONI TERMINÉ !${NC}"
-echo -e "${GREEN}============================================${NC}"
-echo ""
-echo -e "  ${BLUE}Architecture :${NC}"
-echo -e "  ┌─────────────────────────────────────────┐"
-echo -e "  │  Client → Reverse Proxy → Odoo (:8069)  │"
-echo -e "  │                ↓                         │"
-echo -e "  │         HAProxy (:5432)                  │"
-echo -e "  │         ↙     ↓     ↘                    │"
-echo -e "  │  Patroni1  Patroni2  Patroni3            │"
-echo -e "  │  (primary)  (replica) (replica)           │"
-echo -e "  │         ↕     ↕     ↕                    │"
-echo -e "  │    etcd1    etcd2    etcd3                │"
-echo -e "  └─────────────────────────────────────────┘"
-echo ""
-echo -e "  Interface Odoo    : ${BLUE}http://${MANAGER_IP}:${ODOO_PORT:-8069}${NC}"
-echo -e "  HAProxy Stats     : ${BLUE}http://${MANAGER_IP}:7000${NC}"
-echo -e "  (accessible via l'IP de N'IMPORTE quel nœud)"
-echo ""
-echo -e "  ${YELLOW}Commandes Patroni :${NC}"
-echo -e "  Voir le cluster PG    : docker exec \$(docker ps -q -f name=patroni1) patronictl list"
-echo -e "  Failover manuel       : docker exec \$(docker ps -q -f name=patroni1) patronictl failover"
-echo -e "  Switchover planifié   : docker exec \$(docker ps -q -f name=patroni1) patronictl switchover"
-echo ""
-echo -e "  ${YELLOW}Commandes Stack :${NC}"
-echo -e "  Voir les services     : docker stack services ${STACK_NAME}"
-echo -e "  Logs Odoo             : docker service logs ${STACK_NAME}_odoo -f"
-echo -e "  Logs Patroni          : docker service logs ${STACK_NAME}_patroni1 -f"
-echo -e "  Supprimer la stack    : docker stack rm ${STACK_NAME}"
-echo ""
+cat <<EOF
+
+${GREEN}============================================${NC}
+${GREEN}  DEPLOYMENT COMPLETE (v${VERSION})${NC}
+${GREEN}============================================${NC}
+
+  ${BLUE}Access:${NC}
+  Odoo           http://${MANAGER_IP}:8069
+  HAProxy Stats  http://${MANAGER_IP}:7000
+
+  ${YELLOW}Useful commands:${NC}
+  docker stack services ${STACK_NAME}
+  docker service logs ${STACK_NAME}_odoo -f
+  docker exec \$(docker ps -q -f name=patroni1) patronictl list
+  docker stack rm ${STACK_NAME}
+EOF
