@@ -107,7 +107,7 @@ services:
   # PostgreSQL + Patroni (nœud 1 - préféré primary)
   # ============================================
   patroni1:
-    image: ghcr.io/abocoum/adakal-patroni:1.0.3
+    image: ghcr.io/abocoum/adakal-patroni:1.0.4
     hostname: patroni1
     environment:
       PATRONI_NAME: patroni1
@@ -119,7 +119,7 @@ services:
       PATRONI_RESTAPI_CONNECT_ADDRESS: patroni1:8008
       PATRONI_POSTGRESQL_LISTEN: 0.0.0.0:5432
       PATRONI_POSTGRESQL_CONNECT_ADDRESS: patroni1:5432
-      PATRONI_POSTGRESQL_DATA_DIR: /var/lib/postgresql/data
+      PATRONI_POSTGRESQL_DATA_DIR: /var/lib/postgresql/data/pgdata
       PATRONI_SUPERUSER_USERNAME: postgres
       PATRONI_REPLICATION_USERNAME: replicator
       POSTGRES_USER: odoo
@@ -141,7 +141,7 @@ services:
         delay: 10s
 
   patroni2:
-    image: ghcr.io/abocoum/adakal-patroni:1.0.3
+    image: ghcr.io/abocoum/adakal-patroni:1.0.4
     hostname: patroni2
     environment:
       PATRONI_NAME: patroni2
@@ -153,7 +153,7 @@ services:
       PATRONI_RESTAPI_CONNECT_ADDRESS: patroni2:8008
       PATRONI_POSTGRESQL_LISTEN: 0.0.0.0:5432
       PATRONI_POSTGRESQL_CONNECT_ADDRESS: patroni2:5432
-      PATRONI_POSTGRESQL_DATA_DIR: /var/lib/postgresql/data
+      PATRONI_POSTGRESQL_DATA_DIR: /var/lib/postgresql/data/pgdata
       PATRONI_SUPERUSER_USERNAME: postgres
       PATRONI_REPLICATION_USERNAME: replicator
       POSTGRES_USER: odoo
@@ -175,7 +175,7 @@ services:
         delay: 10s
 
   patroni3:
-    image: ghcr.io/abocoum/adakal-patroni:1.0.3
+    image: ghcr.io/abocoum/adakal-patroni:1.0.4
     hostname: patroni3
     environment:
       PATRONI_NAME: patroni3
@@ -187,7 +187,7 @@ services:
       PATRONI_RESTAPI_CONNECT_ADDRESS: patroni3:8008
       PATRONI_POSTGRESQL_LISTEN: 0.0.0.0:5432
       PATRONI_POSTGRESQL_CONNECT_ADDRESS: patroni3:5432
-      PATRONI_POSTGRESQL_DATA_DIR: /var/lib/postgresql/data
+      PATRONI_POSTGRESQL_DATA_DIR: /var/lib/postgresql/data/pgdata
       PATRONI_SUPERUSER_USERNAME: postgres
       PATRONI_REPLICATION_USERNAME: replicator
       POSTGRES_USER: odoo
@@ -237,7 +237,7 @@ services:
   # Odoo 18 Community - Failover
   # ============================================
   odoo:
-    image: ghcr.io/abocoum/adakal-odoo:1.0.3
+    image: ghcr.io/abocoum/adakal-odoo:1.0.4
     environment:
       # Connexion via HAProxy (non-secret)
       HOST: haproxy

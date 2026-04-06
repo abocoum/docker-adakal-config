@@ -1,8 +1,7 @@
 #!/bin/bash
 set -e
 
-# Charger les Docker Secrets dans les variables d'environnement
-# Les secrets sont montés dans /run/secrets/<nom_secret>
+# Load Docker Secrets into environment variables
 for secret_file in /run/secrets/*; do
     if [ -f "$secret_file" ]; then
         var_name=$(basename "$secret_file" | tr '[:lower:]' '[:upper:]')
@@ -10,8 +9,16 @@ for secret_file in /run/secrets/*; do
     fi
 done
 
-# Substituer les variables d'environnement dans patroni.yml
+# Substitute environment variables into patroni.yml
 envsubst < /etc/patroni/patroni.yml > /tmp/patroni.yml
 
-# Lancer Patroni
+# Wait for at least one etcd host to be reachable
+echo "Waiting for etcd..."
+until curl -sf "http://${PATRONI_ETCD3_HOST1}/version" > /dev/null 2>&1 || \
+      curl -sf "http://${PATRONI_ETCD3_HOST2}/version" > /dev/null 2>&1 || \
+      curl -sf "http://${PATRONI_ETCD3_HOST3}/version" > /dev/null 2>&1; do
+    sleep 2
+done
+echo "etcd is reachable"
+
 exec patroni /tmp/patroni.yml
