@@ -9,6 +9,9 @@ version: "3.8"
 #   - Odoo        : 1 instance failover (n'importe quel nœud)
 #   - Filestore   : S3 compatible (via module OCA)
 # ============================================
+# Les mots de passe sont gérés via Docker Secrets.
+# Exécutez create-secrets.sh avant le premier déploiement.
+# ============================================
 
 services:
 
@@ -113,11 +116,12 @@ services:
       PATRONI_POSTGRESQL_CONNECT_ADDRESS: patroni1:5432
       PATRONI_POSTGRESQL_DATA_DIR: /var/lib/postgresql/data
       PATRONI_SUPERUSER_USERNAME: postgres
-      PATRONI_SUPERUSER_PASSWORD: ${PATRONI_SUPERUSER_PASSWORD:-postgres_super_2026}
       PATRONI_REPLICATION_USERNAME: replicator
-      PATRONI_REPLICATION_PASSWORD: ${PATRONI_REPLICATION_PASSWORD:-replicator_2026}
-      POSTGRES_USER: ${POSTGRES_USER:-odoo}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-odoo_secure_password_2026}
+      POSTGRES_USER: odoo
+    secrets:
+      - postgres_password
+      - patroni_superuser_password
+      - patroni_replication_password
     volumes:
       - patroni1-data:/var/lib/postgresql/data
     networks:
@@ -144,11 +148,12 @@ services:
       PATRONI_POSTGRESQL_CONNECT_ADDRESS: patroni2:5432
       PATRONI_POSTGRESQL_DATA_DIR: /var/lib/postgresql/data
       PATRONI_SUPERUSER_USERNAME: postgres
-      PATRONI_SUPERUSER_PASSWORD: ${PATRONI_SUPERUSER_PASSWORD:-postgres_super_2026}
       PATRONI_REPLICATION_USERNAME: replicator
-      PATRONI_REPLICATION_PASSWORD: ${PATRONI_REPLICATION_PASSWORD:-replicator_2026}
-      POSTGRES_USER: ${POSTGRES_USER:-odoo}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-odoo_secure_password_2026}
+      POSTGRES_USER: odoo
+    secrets:
+      - postgres_password
+      - patroni_superuser_password
+      - patroni_replication_password
     volumes:
       - patroni2-data:/var/lib/postgresql/data
     networks:
@@ -175,11 +180,12 @@ services:
       PATRONI_POSTGRESQL_CONNECT_ADDRESS: patroni3:5432
       PATRONI_POSTGRESQL_DATA_DIR: /var/lib/postgresql/data
       PATRONI_SUPERUSER_USERNAME: postgres
-      PATRONI_SUPERUSER_PASSWORD: ${PATRONI_SUPERUSER_PASSWORD:-postgres_super_2026}
       PATRONI_REPLICATION_USERNAME: replicator
-      PATRONI_REPLICATION_PASSWORD: ${PATRONI_REPLICATION_PASSWORD:-replicator_2026}
-      POSTGRES_USER: ${POSTGRES_USER:-odoo}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-odoo_secure_password_2026}
+      POSTGRES_USER: odoo
+    secrets:
+      - postgres_password
+      - patroni_superuser_password
+      - patroni_replication_password
     volumes:
       - patroni3-data:/var/lib/postgresql/data
     networks:
@@ -224,15 +230,17 @@ services:
   odoo:
     image: ghcr.io/abocoum/adakal-odoo:1.0.0
     environment:
-      # Odoo se connecte à HAProxy qui route vers le primary PG
+      # Connexion via HAProxy (non-secret)
       HOST: haproxy
       PORT: 5432
-      USER: ${POSTGRES_USER:-odoo}
-      PASSWORD: ${POSTGRES_PASSWORD:-odoo_secure_password_2026}
-      # --- S3 Storage ---
-      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:-}
-      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:-}
+      USER: odoo
+      # S3 endpoint (non-secret)
       AWS_HOST: ${S3_ENDPOINT:-}
+    secrets:
+      - postgres_password
+      - odoo_admin_passwd
+      - s3_access_key
+      - s3_secret_key
     volumes:
       - odoo-web-data:/var/lib/odoo
       - odoo-config:/etc/odoo:ro
@@ -249,8 +257,6 @@ services:
         mode: ingress
     networks:
       - odoo-internal
-    command: >
-      --config=/etc/odoo/odoo.conf
     deploy:
       replicas: 1
       restart_policy:
@@ -267,6 +273,20 @@ services:
           memory: 4G
         reservations:
           memory: 1G
+
+secrets:
+  postgres_password:
+    external: true
+  patroni_superuser_password:
+    external: true
+  patroni_replication_password:
+    external: true
+  odoo_admin_passwd:
+    external: true
+  s3_access_key:
+    external: true
+  s3_secret_key:
+    external: true
 
 volumes:
   etcd1-data:

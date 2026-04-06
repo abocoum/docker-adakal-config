@@ -105,13 +105,28 @@ fi
 # -------------------------------------------
 echo -e "\n${BLUE}=== [3/7] Vérification des fichiers ===${NC}"
 
-for f in ".env" "config/odoo.conf" "Dockerfile" "patroni/Dockerfile" "patroni/patroni.yml" "patroni/entrypoint.sh" "haproxy/haproxy.cfg" "docker-stack.yml"; do
+for f in "config/odoo.conf" "Dockerfile" "patroni/Dockerfile" "patroni/patroni.yml" "patroni/entrypoint.sh" "haproxy/haproxy.cfg" "docker-stack.yml"; do
     if [ ! -f "$f" ]; then
         print_error "Fichier manquant : $f"
         exit 1
     fi
 done
 print_step "Tous les fichiers de configuration présents"
+
+# Vérifier que les Docker Secrets existent
+echo -e "\n${BLUE}=== [3b/7] Vérification des Docker Secrets ===${NC}"
+MISSING_SECRETS=0
+for secret in postgres_password patroni_superuser_password patroni_replication_password odoo_admin_passwd s3_access_key s3_secret_key; do
+    if ! docker secret inspect "$secret" > /dev/null 2>&1; then
+        print_error "Secret manquant : $secret"
+        MISSING_SECRETS=1
+    fi
+done
+if [ "$MISSING_SECRETS" -eq 1 ]; then
+    print_error "Créez les secrets avec : bash create-secrets.sh"
+    exit 1
+fi
+print_step "Tous les Docker Secrets présents"
 
 if [ ! -d "oca-addons" ] || [ -z "$(ls -A oca-addons 2>/dev/null)" ]; then
     print_warn "Dossier oca-addons vide. Exécutez ./init-s3-modules.sh d'abord."
@@ -164,7 +179,10 @@ print_step "Config Odoo déployée"
 # -------------------------------------------
 echo -e "\n${BLUE}=== [6/7] Déploiement de la stack ===${NC}"
 
-export $(grep -v '^#' .env | grep -v '^\s*$' | xargs)
+# Charger uniquement les variables non-sensibles (ports, S3 endpoint, etc.)
+if [ -f ".env" ]; then
+    export $(grep -v '^#' .env | grep -v '^\s*$' | xargs)
+fi
 
 docker stack deploy -c docker-stack.yml "$STACK_NAME"
 print_step "Stack '$STACK_NAME' déployée"

@@ -2,8 +2,7 @@ name: Build and Push Docker Images
 
 on:
   push:
-    tags:
-      - "v*.*.*"
+    branches: [main]
 
 env:
   REGISTRY: ghcr.io
@@ -11,8 +10,20 @@ env:
   ODOO_IMAGE: ghcr.io/${{ github.repository_owner }}/adakal-odoo
 
 jobs:
+  version:
+    name: Read Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read VERSION file
+        id: version
+        run: echo "version=$(cat VERSION | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
+
   build-patroni:
     name: Build Patroni Image
+    needs: version
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -31,16 +42,6 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.PATRONI_IMAGE }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha
 
       - name: Build and push Patroni image
         uses: docker/build-push-action@v6
@@ -48,13 +49,15 @@ jobs:
           context: patroni
           file: patroni/Dockerfile
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: |
+            ${{ env.PATRONI_IMAGE }}:${{ needs.version.outputs.version }}
+            ${{ env.PATRONI_IMAGE }}:sha-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   build-odoo:
     name: Build Odoo Image
+    needs: version
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -74,23 +77,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.ODOO_IMAGE }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha
-
       - name: Build and push Odoo image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: |
+            ${{ env.ODOO_IMAGE }}:${{ needs.version.outputs.version }}
+            ${{ env.ODOO_IMAGE }}:sha-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
