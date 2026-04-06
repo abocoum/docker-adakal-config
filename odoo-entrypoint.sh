@@ -17,5 +17,9 @@ export ODOO_ADMIN_PASSWD="${ODOO_ADMIN_PASSWD:-}"
 [ -n "${S3_ACCESS_KEY:-}" ] && export AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY"
 [ -n "${S3_SECRET_KEY:-}" ] && export AWS_SECRET_ACCESS_KEY="$S3_SECRET_KEY"
 
+# Copy config to writable location (Docker config mount is read-only)
+cp /etc/odoo/odoo.conf /tmp/odoo.conf
+export ODOO_RC=/tmp/odoo.conf
+
 # Delegate to the official Odoo entrypoint
 exec /entrypoint.sh odoo "$@"
