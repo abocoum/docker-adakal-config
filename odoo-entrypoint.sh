@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Charger les Docker Secrets dans les variables d'environnement
+# Load Docker Secrets into environment variables
 for secret_file in /run/secrets/*; do
     if [ -f "$secret_file" ]; then
         var_name=$(basename "$secret_file" | tr '[:lower:]' '[:upper:]')
@@ -9,27 +9,13 @@ for secret_file in /run/secrets/*; do
     fi
 done
 
-# Substituer les placeholders dans odoo.conf avec les valeurs des secrets
-CONF_TEMPLATE="/etc/odoo/odoo.conf"
-CONF_RUNTIME="/tmp/odoo.conf"
+# Map secrets to the env vars the official Odoo entrypoint expects
+export PASSWORD="${POSTGRES_PASSWORD}"
+export ODOO_ADMIN_PASSWD="${ODOO_ADMIN_PASSWD:-}"
 
-cp "$CONF_TEMPLATE" "$CONF_RUNTIME"
+# S3 credentials
+[ -n "${S3_ACCESS_KEY:-}" ] && export AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY"
+[ -n "${S3_SECRET_KEY:-}" ] && export AWS_SECRET_ACCESS_KEY="$S3_SECRET_KEY"
 
-# Remplacer les placeholders par les valeurs réelles
-if [ -n "${POSTGRES_PASSWORD:-}" ]; then
-    sed -i "s|__DB_PASSWORD__|${POSTGRES_PASSWORD}|g" "$CONF_RUNTIME"
-fi
-if [ -n "${ODOO_ADMIN_PASSWD:-}" ]; then
-    sed -i "s|__ADMIN_PASSWD__|${ODOO_ADMIN_PASSWD}|g" "$CONF_RUNTIME"
-fi
-
-# Passer les credentials S3 via les variables d'environnement standard AWS
-if [ -n "${S3_ACCESS_KEY:-}" ]; then
-    export AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY"
-fi
-if [ -n "${S3_SECRET_KEY:-}" ]; then
-    export AWS_SECRET_ACCESS_KEY="$S3_SECRET_KEY"
-fi
-
-# Lancer Odoo avec le fichier de config généré
-exec /entrypoint.sh odoo --config="$CONF_RUNTIME" "$@"
+# Delegate to the official Odoo entrypoint
+exec /entrypoint.sh odoo "$@"
