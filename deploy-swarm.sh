@@ -100,8 +100,8 @@ deploy_config() {
     fi
 }
 
-deploy_config "${STACK_NAME}_haproxy-cfg" haproxy/haproxy.cfg
-deploy_config "${STACK_NAME}_odoo-conf"   config/odoo.conf
+deploy_config "haproxy-cfg" haproxy/haproxy.cfg
+deploy_config "odoo-conf"   config/odoo.conf
 
 # ============================================
 # 4. Deploy stack

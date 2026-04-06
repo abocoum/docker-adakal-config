@@ -217,8 +217,9 @@ services:
   haproxy:
     image: haproxy:2.9-alpine
     hostname: haproxy
-    volumes:
-      - haproxy-config:/usr/local/etc/haproxy:ro
+    configs:
+      - source: haproxy-cfg
+        target: /usr/local/etc/haproxy/haproxy.cfg
     ports:
       - "127.0.0.1:5432:5432"
       - "127.0.0.1:7000:7000"
@@ -250,9 +251,11 @@ services:
       - odoo_admin_passwd
       - s3_access_key
       - s3_secret_key
+    configs:
+      - source: odoo-conf
+        target: /etc/odoo/odoo.conf
     volumes:
       - odoo-web-data:/var/lib/odoo
-      - odoo-config:/etc/odoo:ro
       - odoo-extra-addons:/mnt/extra-addons
       - odoo-oca-addons:/mnt/oca-addons:ro
     ports:
@@ -283,6 +286,12 @@ services:
         reservations:
           memory: 1G
 
+configs:
+  haproxy-cfg:
+    external: true
+  odoo-conf:
+    external: true
+
 secrets:
   postgres_password:
     external: true
@@ -305,10 +314,8 @@ volumes:
   patroni2-data:
   patroni3-data:
   odoo-web-data:
-  odoo-config:
   odoo-extra-addons:
   odoo-oca-addons:
-  haproxy-config:
 
 networks:
   odoo-internal:
