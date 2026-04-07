@@ -18,7 +18,7 @@ export ODOO_ADMIN_PASSWD="${ODOO_ADMIN_PASSWD:-}"
 [ -n "${S3_SECRET_KEY:-}" ] && export AWS_SECRET_ACCESS_KEY="$S3_SECRET_KEY"
 
 # Copy config to writable location (Docker config mount is read-only)
-cp /etc/odoo/odoo.conf /tmp/odoo.conf
+cat /etc/odoo/odoo.conf > /tmp/odoo.conf
 export ODOO_RC=/tmp/odoo.conf
 
 # Inject admin_passwd into config from secret
