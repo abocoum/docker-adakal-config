@@ -21,5 +21,11 @@ export ODOO_ADMIN_PASSWD="${ODOO_ADMIN_PASSWD:-}"
 cp /etc/odoo/odoo.conf /tmp/odoo.conf
 export ODOO_RC=/tmp/odoo.conf
 
+# Inject admin_passwd into config from secret
+if [ -n "${ODOO_ADMIN_PASSWD:-}" ]; then
+    sed -i '/admin_passwd/d' "$ODOO_RC"
+    echo "admin_passwd = ${ODOO_ADMIN_PASSWD}" >> "$ODOO_RC"
+fi
+
 # Delegate to the official Odoo entrypoint
 exec /entrypoint.sh odoo "$@"
